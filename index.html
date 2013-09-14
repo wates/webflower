@@ -11,7 +11,7 @@
         r=r*r;
         gl_FragColor = vec4(1.0-r, 1.0-r, 1.0-r, 1.0);
     }
-</script>
+  </script>
   <script id="shader-vs" type="x-shader/x-vertex">
     attribute vec4 aPosition;
     attribute vec2 aUV;
@@ -30,8 +30,18 @@
         gl_Position=position;
         vUV=aUV;
     }
-</script>
+  </script>
   <script type="text/javascript">
+
+    function rotationY(v,r) {
+      var cr = Math.cos(r);
+      var sr = Math.sin(r);
+      return [
+        cr * v[0] - sr * v[2],
+        v[1],
+        sr * v[0] + cr * v[2]
+      ];
+    }
 
     var gl;
     function initGL(canvas) {
@@ -82,6 +92,69 @@
       return shader;
     }
 
+    /**
+     * f float
+     * p Array
+     */
+    function BSpline(f,p) {
+      var N = p.length;
+      f *= N;
+      if (f < 0)
+        f = 0;
+      if (f > N)
+        f = N - 0.00001;
+      var o = Math.floor(f); //offset
+      var u = f - o; //interp
+
+      var point = Array(4);
+      for (var i = 0; i < 4; i++) {
+        if (i + o - 1 < 0)
+          point[i] = p[0];
+        else if (i + o - 1 > N - 1)
+          point[i] = p[N - 1];
+        else
+          point[i] = p[i + o - 1];
+      }
+      var key = [
+	        (point[0] + 4 * point[1] + point[2]) / 6,
+	        (point[2] - point[0]) / 2,
+	        (point[0] - 2 * point[1] + point[2]) / 2,
+	        (3 * (point[1] - point[2]) + point[3] - point[0]) / 6
+        ];
+      return (key[0] + u * (key[1] + u * (key[2] + key[3] * u)));
+    }
+
+    function vectorBSpline(f, pp) {
+      return pp.map(function (a) { return BSpline(f, a); });
+    }
+
+    /**
+    * @param hsv 0~1
+    */
+    function HSVtoRGB(h, s, v) {
+      if (0 == s) {
+        return [v, v, v];
+      }
+      var i = Math.floor(h * 6);
+      var f = h * 6 - i;
+      var p = v * (1 - s);
+      var q = v * (1 - f * s);
+      var t = v * (1 - (1 - f) * s);
+      switch (i) {
+        case 0:
+          return [v, t, p];
+        case 1:
+          return [q, v, p];
+        case 2:
+          return [p, v, t];
+        case 3:
+          return [p, q, v];
+        case 4:
+          return [t, p, v];
+        default:
+          return [v, p, q];
+      }
+    }
 
     var shaderProgram;
 
@@ -125,32 +198,48 @@
     var numTriangles=0;
 
     function initBuffers() {
+
+      var c1 = [
+        [2, 2, 10, 30, 42, 45, 40],
+        [0, 0, 5, 10, 15, 12, 10],
+        [0, 0, 12, 20, 15, 5, 0],
+      ];
+
       var pcl = [];
-      for (var i = 0; i < 2000; i++) {
-        pcl[i] = { pos: [(Math.random() - 0.5) * 50, (Math.random() - 0.5) * 50, (Math.random() - 0.5) * 50] };
+      var len = 50;
+      for (var i = 3; i < len-4; i++) {
+        var p = vectorBSpline(i / len, c1);
+        pcl.push({ pos: p });
+        var q = vectorBSpline(i / len, c1);
+        q[2] *= -1;
+        pcl.push({ pos: q });
       }
 
-      numTriangles=pcl.length*2;
 
       var UV = [[1, 1], [-1, 1], [1, -1], [-1, -1]];
       var vtx = [];
-      for (var i = 0; i < pcl.length; i++) {
-        var size = Math.random() + 1;
-        for (var j = 0; j < 4; j++) {
-          vtx = vtx.concat(
-            [pcl[i].pos[0], pcl[i].pos[1], pcl[i].pos[2], size, UV[j][0], UV[j][1]]
+      for (var r = 0; r < 5; r++) {
+        for (var i = 0; i < pcl.length; i++) {
+          var size = 0.7;
+          for (var j = 0; j < 4; j++) {
+            var p = rotationY(pcl[i].pos, r * Math.PI * 2 / 5);
+            vtx = vtx.concat(
+            [p[0], p[1], p[2], size, UV[j][0], UV[j][1]]
 
           );
-        } 
+          }
+        }
       }
+      var vertices = vtx.length / 6;
+      numTriangles = vertices / 4 * 2 ;
 
       squareVertexPositionBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vtx), gl.STATIC_DRAW);
-      squareVertexPositionBuffer.numItems = pcl.length;
+      squareVertexPositionBuffer.numItems = vertices;
 
       var idx = [];
-      for (var i = 0; i < pcl.length; i++) {
+      for (var i = 0; i < vertices / 4; i++) {
         idx = idx.concat([i * 4 + 0, i * 4 + 1, i * 4 + 2, i * 4 + 2, i * 4 + 1, i * 4 + 3]);
       }
       cubeVertexIndexBuffer = gl.createBuffer();
@@ -158,6 +247,8 @@
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
     }
 
+    var pos = [
+    ];
 
     function drawScene() {
       gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
@@ -167,8 +258,10 @@
 
       mat4.identity(mvMatrix);
 
-      mat4.translate(mvMatrix, [0, 0.0, -70.0]);
+      mat4.rotateX(mvMatrix,Math.PI/8);
+      mat4.translate(mvMatrix, [20, -40.0, -70.0]);
       mat4.rotateY(mvMatrix, count / 100);
+      mat4.scale(mvMatrix,[0.3,0.3,0.3]);
 
 
 //      mat4.translate(mvMatrix, [3.0, 0.0, 0.0]);
@@ -197,7 +290,7 @@
     }
 
 
-</script>
+  </script>
 </head>
 <body onload="webGLStart();">
   <canvas id="main_frame" style="border: none;" width="1024" height="576"></canvas>
