@@ -4,22 +4,25 @@
   <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
   <script id="shader-fs" type="x-shader/x-fragment">
     precision mediump float;
+    varying vec3 vColor;
     varying vec2 vUV;
 
     void main(void) {
         float r=dot(vUV,vUV);
         r=r*r;
-        gl_FragColor = vec4(1.0-r, 1.0-r, 1.0-r, 1.0);
+        gl_FragColor = vec4(vColor, 1.0-r);
     }
   </script>
   <script id="shader-vs" type="x-shader/x-vertex">
     attribute vec4 vaPosition;
+    attribute vec3 vaColor;
     attribute vec2 vaUV;
 
     uniform mat4 uMVMatrix;
     uniform mat4 uPMatrix;
     uniform vec4 uScr;
 
+    varying vec3 vColor;
     varying vec2 vUV;
 
     void main(void) {
@@ -28,6 +31,7 @@
         position.x = position.x+vaUV.x*vaPosition.w*uScr.x;
         position.y = position.y+vaUV.y*vaPosition.w;
         gl_Position=position;
+        vColor=vaColor;
         vUV=vaUV;
     }
   </script>
@@ -189,15 +193,20 @@
 
       gl.useProgram(shaderProgram);
 
+      shaderProgram.vertexAttribute = [];
+
       getText("shader-vs").split('\n').forEach(function (a) {
         var l = a.match(/va[A-Za-z]*;/);
         var c = a.match(/vec[1-4]/);
         a.match('attribute') && Array.isArray(l) && l.forEach(function (b) {
           var name = b.slice(0, b.length - 1);
-          var len = Number(c[0][3]);
-          shaderProgram[name] = gl.getAttribLocation(shaderProgram, name);
-          gl.enableVertexAttribArray(shaderProgram[name]);
-          shaderProgram['length_' + name] = len;
+          var attr = {
+            name: name,
+            len: Number(c[0][3]),
+            location: gl.getAttribLocation(shaderProgram, name)
+          };
+          shaderProgram.vertexAttribute.push(attr);
+          gl.enableVertexAttribArray(attr.location);
         });
       });
 
@@ -226,16 +235,16 @@
         [0, 3, 10, 30, 42, 45, 40],
         [0, 0, 5, 10, 15, 12, 10],
         [0, 0, 12, 20, 15, 5, 0],
+        [0.0, 0.1, 0.1, 0.0 ],
       ];
 
       var pcl = [];
       var len = 50;
       for (var i = 0; i < len-4; i++) {
         var p = vectorBSpline(i / len, c1);
-        pcl.push({ pos: p });
-        var q = vectorBSpline(i / len, c1);
-        q[2] *= -1;
-        pcl.push({ pos: q });
+
+        pcl.push({ pos: [p[0], p[1], p[2] ] ,col:HSVtoRGB(p[3], 0.6, 1)});
+        pcl.push({ pos: [p[0], p[1], -p[2]] ,col:HSVtoRGB(p[3], 0.6, 1)});
       }
 
 
@@ -247,13 +256,15 @@
           for (var j = 0; j < 4; j++) {
             var p = rotationY(pcl[i].pos, r * Math.PI * 2 / 5);
             vtx = vtx.concat(
-            [p[0], p[1], p[2], size, UV[j][0], UV[j][1]]
-
+            [p[0], p[1], p[2], size,
+             pcl[i].col[0], pcl[i].col[1], pcl[i].col[2],
+             UV[j][0], UV[j][1]
+            ]
           );
           }
         }
       }
-      var vertices = vtx.length / 6;
+      var vertices = vtx.length / 9;
       numTriangles = vertices / 4 * 2 ;
 
       squareVertexPositionBuffer = gl.createBuffer();
@@ -284,28 +295,28 @@
       mat4.rotateX(mvMatrix,Math.PI/8);
       mat4.translate(mvMatrix, [20, -40.0, -70.0]);
       mat4.rotateY(mvMatrix, count / 100);
-      mat4.scale(mvMatrix,[0.3,0.3,0.3]);
+      mat4.scale(mvMatrix, [0.4, 0.4, 0.4]);
 
 
 //      mat4.translate(mvMatrix, [3.0, 0.0, 0.0]);
       gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
-      var offs = 0,stride=0;
-      for (var s in shaderProgram) {
-        if (0 == s.indexOf('length_')) {
-          stride += shaderProgram[s] * 4;
-        }
-      }
-      for (var s in shaderProgram) {
-        if (0 == s.indexOf('va')) {
-          gl.vertexAttribPointer(shaderProgram[s], shaderProgram['length_' + s], gl.FLOAT, false, stride, offs);
-          offs += shaderProgram['length_' + s] * 4;
-        }
-      }
+      var offs = 0, stride = 0;
+      shaderProgram.vertexAttribute.forEach(function (a) { stride += a.len * 4; });
+      shaderProgram.vertexAttribute.forEach(function (a) {
+        gl.vertexAttribPointer(a.location, a.len, gl.FLOAT, false, stride, offs);
+        offs += a.len * 4;
+      });
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVertexIndexBuffer);
       setMatrixUniforms();
       gl.drawElements(gl.TRIANGLES, numTriangles * 3, gl.UNSIGNED_SHORT, 0);
 
       count++;
+    }
+
+    var last_count = 0;
+    function FPS() {
+      document.getElementById('show_FPS').innerHTML = "FPS: " + (count - last_count);
+      last_count = count;
     }
 
     function webGLStart() {
@@ -319,7 +330,8 @@
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
 
-      setInterval(drawScene, 15);
+      setInterval(drawScene, 16);
+      setInterval(FPS, 1000);
     }
 
 
@@ -327,5 +339,7 @@
 </head>
 <body onload="webGLStart();">
   <canvas id="main_frame" style="border: none;" width="1024" height="576"></canvas>
+  <br />
+  <span id="show_FPS"></span>
 </body>
 </html>
