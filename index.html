@@ -13,8 +13,8 @@
     }
   </script>
   <script id="shader-vs" type="x-shader/x-vertex">
-    attribute vec4 aPosition;
-    attribute vec2 aUV;
+    attribute vec4 vaPosition;
+    attribute vec2 vaUV;
 
     uniform mat4 uMVMatrix;
     uniform mat4 uPMatrix;
@@ -23,12 +23,12 @@
     varying vec2 vUV;
 
     void main(void) {
-        vec4 position= uMVMatrix * vec4(aPosition.xyz,1.0);
+        vec4 position= uMVMatrix * vec4(vaPosition.xyz,1.0);
         position = uPMatrix * position;
-        position.x = position.x+aUV.x*aPosition.w*uScr.x;
-        position.y = position.y+aUV.y*aPosition.w;
+        position.x = position.x+vaUV.x*vaPosition.w*uScr.x;
+        position.y = position.y+vaUV.y*vaPosition.w;
         gl_Position=position;
-        vUV=aUV;
+        vUV=vaUV;
     }
   </script>
   <script type="text/javascript">
@@ -56,6 +56,22 @@
       }
     }
 
+    function getText(id) {
+      var shaderScript = document.getElementById(id);
+      if (!shaderScript) {
+        return null;
+      }
+
+      var str = "";
+      var k = shaderScript.firstChild;
+      while (k) {
+        if (k.nodeType == 3) {
+          str += k.textContent;
+        }
+        k = k.nextSibling;
+      }
+      return str;
+    }
 
     function getShader(gl, id) {
       var shaderScript = document.getElementById(id);
@@ -96,7 +112,7 @@
      * f float
      * p Array
      */
-    function BSpline(f,p) {
+    function BSpline(f, p) {
       var N = p.length;
       f *= N;
       if (f < 0)
@@ -173,10 +189,17 @@
 
       gl.useProgram(shaderProgram);
 
-      shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aPosition");
-      gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
-      shaderProgram.vertexUVAttribute = gl.getAttribLocation(shaderProgram, "aUV");
-      gl.enableVertexAttribArray(shaderProgram.vertexUVAttribute);
+      getText("shader-vs").split('\n').forEach(function (a) {
+        var l = a.match(/va[A-Za-z]*;/);
+        var c = a.match(/vec[1-4]/);
+        a.match('attribute') && Array.isArray(l) && l.forEach(function (b) {
+          var name = b.slice(0, b.length - 1);
+          var len = Number(c[0][3]);
+          shaderProgram[name] = gl.getAttribLocation(shaderProgram, name);
+          gl.enableVertexAttribArray(shaderProgram[name]);
+          shaderProgram['length_' + name] = len;
+        });
+      });
 
       shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
       shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
@@ -200,14 +223,14 @@
     function initBuffers() {
 
       var c1 = [
-        [2, 2, 10, 30, 42, 45, 40],
+        [0, 3, 10, 30, 42, 45, 40],
         [0, 0, 5, 10, 15, 12, 10],
         [0, 0, 12, 20, 15, 5, 0],
       ];
 
       var pcl = [];
       var len = 50;
-      for (var i = 3; i < len-4; i++) {
+      for (var i = 0; i < len-4; i++) {
         var p = vectorBSpline(i / len, c1);
         pcl.push({ pos: p });
         var q = vectorBSpline(i / len, c1);
@@ -266,8 +289,18 @@
 
 //      mat4.translate(mvMatrix, [3.0, 0.0, 0.0]);
       gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
-      gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 4, gl.FLOAT, false, 24, 0);
-      gl.vertexAttribPointer(shaderProgram.vertexUVAttribute, 2, gl.FLOAT, false, 24, 16);
+      var offs = 0,stride=0;
+      for (var s in shaderProgram) {
+        if (0 == s.indexOf('length_')) {
+          stride += shaderProgram[s] * 4;
+        }
+      }
+      for (var s in shaderProgram) {
+        if (0 == s.indexOf('va')) {
+          gl.vertexAttribPointer(shaderProgram[s], shaderProgram['length_' + s], gl.FLOAT, false, stride, offs);
+          offs += shaderProgram['length_' + s] * 4;
+        }
+      }
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVertexIndexBuffer);
       setMatrixUniforms();
       gl.drawElements(gl.TRIANGLES, numTriangles * 3, gl.UNSIGNED_SHORT, 0);
