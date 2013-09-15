@@ -5,12 +5,12 @@
   <script id="shader-fs" type="x-shader/x-fragment">
     precision mediump float;
     varying vec3 vColor;
-    varying vec2 vUV;
+    varying vec3 vUVz;
 
     void main(void) {
-        float r=dot(vUV,vUV);
-        r=r*r;
-        gl_FragColor = vec4(vColor, 1.0-r);
+        float r=min(1.0,dot(vUVz.xy,vUVz.xy));
+        r=1.0-r*r;
+        gl_FragColor = vec4(vColor,r*vUVz.z);
     }
   </script>
   <script id="shader-vs" type="x-shader/x-vertex">
@@ -23,16 +23,17 @@
     uniform vec4 uScr;
 
     varying vec3 vColor;
-    varying vec2 vUV;
+    varying vec3 vUVz;
 
     void main(void) {
         vec4 position= uMVMatrix * vec4(vaPosition.xyz,1.0);
         position = uPMatrix * position;
-        position.x = position.x+vaUV.x*vaPosition.w*uScr.x;
-        position.y = position.y+vaUV.y*vaPosition.w;
+        float boke=min(1.0,pow(1.0-(position.z/uScr.y),uScr.z));
+        position.x = position.x+vaUV.x*vaPosition.w*(1.0+boke*uScr.w)*uScr.x;
+        position.y = position.y+vaUV.y*vaPosition.w*(1.0+boke*uScr.w);
         gl_Position=position;
         vColor=vaColor;
-        vUV=vaUV;
+        vUVz=vec3(vaUV,max(0.1,1.0-boke));
     }
   </script>
   <script type="text/javascript">
@@ -220,9 +221,6 @@
     var pMatrix = mat4.create();
 
     function setMatrixUniforms() {
-      gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
-      gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
-      gl.uniform4f(shaderProgram.uScr, 9/16,0,0,0);
     }
 
     var squareVertexPositionBuffer;
@@ -288,7 +286,7 @@
       gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 1, 1000.0, pMatrix);
+      mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 1, 200.0, pMatrix);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
       var offs = 0, stride = 0;
@@ -299,17 +297,37 @@
       });
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVertexIndexBuffer);
       var view = mat4.create();
-      mat4.lookAt([0, 30, 70], [0, 0, 0], [0, 1, 0], view);
+
+      var from = [
+        [0,0, 30, 60, -40, -20, 0 ],
+        [30,30, 20, 20, 20, 40, 30 ],
+        [70,70, 60, 0, -60, 0, 70 ]
+      ];
+      var to = [
+        [0, 0, 30, -10, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ];
+      var focus =
+        [70, 50, 10, 70, 70];
+      var D =
+        [1.5, 1.5, 5.0, 1.5, 1.5];
+
+      var f = (count % 600) / 600;
+      mat4.lookAt(vectorBSpline(f, from), vectorBSpline(f, to), [0, 1, 0], view);
+
+      gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+      gl.uniform4f(shaderProgram.uScr, 9 / 16, BSpline(f, focus), 1.5, BSpline(f, D));
 
       for (var n = 0; n < 6; n++) {
         mat4.identity(mvMatrix);
         mat4.multiply(view, mvMatrix, mvMatrix);
         mat4.rotateY(mvMatrix, Math.PI * 2 / 6 * n);
-        mat4.translate(mvMatrix, [30, 0, 0]);
-        mat4.rotateY(mvMatrix, count / 200);
+        mat4.translate(mvMatrix, [25, 0, 0]);
+        mat4.rotateY(mvMatrix, count / 500);
         mat4.scale(mvMatrix, [0.4, 0.4, 0.4]);
 
-        setMatrixUniforms();
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
         gl.drawElements(gl.TRIANGLES, numTriangles * 3, gl.UNSIGNED_SHORT, 0);
       }
       count++;
