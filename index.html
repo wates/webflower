@@ -156,6 +156,8 @@
       if (0 == s) {
         return [v, v, v];
       }
+      if (h < 0) h++;
+      if (1 < h) h--;
       var i = Math.floor(h * 6);
       var f = h * 6 - i;
       var p = v * (1 - s);
@@ -217,11 +219,6 @@
     }
 
     var count=0;
-    var mvMatrix = mat4.create();
-    var pMatrix = mat4.create();
-
-    function setMatrixUniforms() {
-    }
 
     var squareVertexPositionBuffer;
     var cubeVertexIndexBuffer;
@@ -233,16 +230,18 @@
         [0, 3, 10, 30, 42, 45, 40],
         [0, 0, 5, 10, 15, 12, 10],
         [0, 0, 12, 20, 15, 5, 0],
-        [0.0, 0.1, 0.1, 0.0 ],
+        [-0.05, 0.05, 0.05, 0.0],
+        [0.6, 0.6, 0.5, 0.3],
+        [1.0, 1.0, 0.2],
       ];
 
       var pcl = [];
-      var len = 50;
-      for (var i = 0; i < len-4; i++) {
+      var len = 100;
+      for (var i = 5; i < len-5; i++) {
         var p = vectorBSpline(i / len, c1);
 
-        pcl.push({ pos: [p[0], p[1], p[2] ] ,col:HSVtoRGB(p[3], 0.6, 1)});
-        pcl.push({ pos: [p[0], p[1], -p[2]] ,col:HSVtoRGB(p[3], 0.6, 1)});
+        pcl.push({ pos: [p[0], p[1], p[2] ] ,col:HSVtoRGB(p[3], p[4], p[5])});
+        pcl.push({ pos: [p[0], p[1], -p[2]] ,col:HSVtoRGB(p[3], p[4], p[5])});
       }
 
 
@@ -286,6 +285,8 @@
       gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+      var mvMatrix = mat4.create();
+      var pMatrix = mat4.create();
       mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 1, 200.0, pMatrix);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
@@ -309,7 +310,7 @@
         [0, 0, 0, 0, 0]
       ];
       var focus =
-        [70, 50, 10, 70, 70];
+        [70, 70, 30, 20, 70, 70];
       var D =
         [1.5, 1.5, 5.0, 1.5, 1.5];
 
@@ -319,7 +320,7 @@
       gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
       gl.uniform4f(shaderProgram.uScr, 9 / 16, BSpline(f, focus), 1.5, BSpline(f, D));
 
-      for (var n = 0; n < 6; n++) {
+      for (var n = 0; n < 5; n++) {
         mat4.identity(mvMatrix);
         mat4.multiply(view, mvMatrix, mvMatrix);
         mat4.rotateY(mvMatrix, Math.PI * 2 / 6 * n);
