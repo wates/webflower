@@ -4,13 +4,13 @@
   <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
   <script id="shader-fs" type="x-shader/x-fragment">
     precision mediump float;
-    varying vec3 vColor;
+    varying vec4 vColor;
     varying vec3 vUVz;
 
     void main(void) {
         float r=min(1.0,dot(vUVz.xy,vUVz.xy));
         r=1.0-r*r;
-        gl_FragColor = vec4(vColor,r*vUVz.z);
+        gl_FragColor = vec4(vColor.xyz,vColor.w*r*vUVz.z);
     }
   </script>
   <script id="shader-vs" type="x-shader/x-vertex">
@@ -22,7 +22,7 @@
     uniform mat4 uPMatrix;
     uniform vec4 uScr;
 
-    varying vec3 vColor;
+    varying vec4 vColor;
     varying vec3 vUVz;
 
     void main(void) {
@@ -32,8 +32,8 @@
         position.x = position.x+vaUV.x*vaPosition.w*(1.0+boke*uScr.w)*uScr.x;
         position.y = position.y+vaUV.y*vaPosition.w*(1.0+boke*uScr.w);
         gl_Position=position;
-        vColor=vaColor;
-        vUVz=vec3(vaUV,max(0.1,1.0-boke));
+        vColor=vec4(vaColor,1.0-pow(boke,2.0));
+        vUVz=vec3(vaUV,max(0.2,1.0-boke));
     }
   </script>
   <script type="text/javascript">
@@ -46,6 +46,9 @@
         v[1],
         sr * v[0] + cr * v[2]
       ];
+    }
+    function scale(v, s) {
+      return [v[0] * s, v[1] * s, v[2] * s];
     }
 
     var gl;
@@ -156,6 +159,7 @@
       if (0 == s) {
         return [v, v, v];
       }
+      if (1 < s) s = 1;
       if (h < 0) h++;
       if (1 < h) h--;
       var i = Math.floor(h * 6);
@@ -236,29 +240,44 @@
       ];
 
       var pcl = [];
-      var len = 100;
-      for (var i = 5; i < len-5; i++) {
-        var p = vectorBSpline(i / len, c1);
+      var mat = mat4.create();
+      for (var r = 0; r < 100; r++) {
+        mat4.identity(mat);
+        var s = 0.3 + (r / 100);
+        mat4.scale(mat, [s, 1 / Math.pow(0.3 + r / 100, 1.1), s]);
+        mat4.rotateY(mat, Math.PI / 2.34 * r);
+        mat4.translate(mat, [r * 0.25, r * 0.1, 0]);
 
-        pcl.push({ pos: [p[0], p[1], p[2] ] ,col:HSVtoRGB(p[3], p[4], p[5])});
-        pcl.push({ pos: [p[0], p[1], -p[2]] ,col:HSVtoRGB(p[3], p[4], p[5])});
+        var len = Math.floor(40 + r * 0.1);
+        for (var i = 5; i < len - 5; i++) {
+          var p = vectorBSpline(i / len, c1);
+          var q = [];
+          mat4.multiplyVec3(mat, [p[0], p[1], p[2] ], q);
+          var col = HSVtoRGB(p[3] + r / 200-0.1, p[4] + r / 600, p[5]);
+          pcl.push({ pos: [q[0], q[1], q[2] ], col: col });
+          mat4.multiplyVec3(mat, [p[0], p[1], -p[2]], q);
+          pcl.push({ pos: [q[0], q[1], q[2]], col: col });
+        }
       }
+      document.getElementById('show_poly').innerHTML = pcl.length + ":particles " + pcl.length * 4 + ":vertices " + pcl.length * 4 * 9 * 4 + ":bytes";
 
 
       var UV = [[1, 1], [-1, 1], [1, -1], [-1, -1]];
-      var vtx = [];
-      for (var r = 0; r < 5; r++) {
-        for (var i = 0; i < pcl.length; i++) {
-          var size = 0.7;
-          for (var j = 0; j < 4; j++) {
-            var p = rotationY(pcl[i].pos, r * Math.PI * 2 / 5);
-            vtx = vtx.concat(
-            [p[0], p[1], p[2], size,
-             pcl[i].col[0], pcl[i].col[1], pcl[i].col[2],
-             UV[j][0], UV[j][1]
-            ]
-          );
-          }
+      var vtx = Array(pcl.length * 4 * 9);
+      var N = 0;
+      for (var i = 0; i < pcl.length; i++) {
+        var size = 0.7;
+        for (var j = 0; j < 4; j++) {
+          var p = pcl[i].pos;
+          vtx[N++]=p[0];
+          vtx[N++]=p[1];
+          vtx[N++]=p[2];
+          vtx[N++]=size;
+          vtx[N++]=pcl[i].col[0];
+          vtx[N++]=pcl[i].col[1];
+          vtx[N++]=pcl[i].col[2];
+          vtx[N++]=UV[j][0];
+          vtx[N++]=UV[j][1];
         }
       }
       var vertices = vtx.length / 9;
@@ -277,9 +296,6 @@
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeVertexIndexBuffer);
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
     }
-
-    var pos = [
-    ];
 
     function drawScene() {
       gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
@@ -305,14 +321,14 @@
         [70,70, 60, 0, -60, 0, 70 ]
       ];
       var to = [
-        [0, 0, 30, -10, 0],
-        [0, 0, 0, 0, 0],
+        [0, 0, 10, -10, 0],
+        [10, 10, 20, 20, 10],
         [0, 0, 0, 0, 0]
       ];
       var focus =
-        [70, 70, 30, 20, 70, 70];
+        [70, 70, 70, 20, 20, 70, 70];
       var D =
-        [1.5, 1.5, 5.0, 1.5, 1.5];
+        [1.5, 1.5, 4.0, 1.5, 1.5];
 
       var f = (count % 600) / 600;
       mat4.lookAt(vectorBSpline(f, from), vectorBSpline(f, to), [0, 1, 0], view);
@@ -320,18 +336,15 @@
       gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
       gl.uniform4f(shaderProgram.uScr, 9 / 16, BSpline(f, focus), 1.5, BSpline(f, D));
 
-      for (var n = 0; n < 5; n++) {
-        mat4.identity(mvMatrix);
-        mat4.multiply(view, mvMatrix, mvMatrix);
-        mat4.rotateY(mvMatrix, Math.PI * 2 / 6 * n);
-        mat4.translate(mvMatrix, [25, 0, 0]);
-        mat4.rotateY(mvMatrix, count / 500);
-        mat4.scale(mvMatrix, [0.4, 0.4, 0.4]);
+      mat4.identity(mvMatrix);
+      mat4.multiply(view, mvMatrix, mvMatrix);
+      mat4.rotateY(mvMatrix, count / 500);
+      mat4.scale(mvMatrix, [0.4, 0.4, 0.4]);
 
-        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
-        gl.drawElements(gl.TRIANGLES, numTriangles * 3, gl.UNSIGNED_SHORT, 0);
-      }
+      gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+      gl.drawElements(gl.TRIANGLES, numTriangles * 3, gl.UNSIGNED_SHORT, 0);
       count++;
+      setTimeout(drawScene, 16);
     }
 
     var last_count = 0;
@@ -351,7 +364,7 @@
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
 
-      setInterval(drawScene, 16);
+      setTimeout(drawScene, 16);
       setInterval(FPS, 1000);
     }
 
@@ -361,6 +374,13 @@
 <body onload="webGLStart();">
   <canvas id="main_frame" style="border: none;" width="1024" height="576"></canvas>
   <br />
-  <span id="show_FPS"></span>
+  <table>
+    <tr>
+      <td id="show_FPS">
+      </td>
+      <td id="show_poly">
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
