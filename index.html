@@ -2,19 +2,28 @@
 <head>
   <title>webflower</title>
   <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+  <script id="depth-fs" type="x-shader/x-fragment">
+    precision mediump float;
+    varying vec3 vColor;
+    varying vec3 vUVz;
+
+    void main(void) {
+        gl_FragColor = vec4(1,1,1,vUVz.z);
+    }
+  </script>
   <script id="shader-fs" type="x-shader/x-fragment">
     precision mediump float;
-    varying vec4 vColor;
+    varying vec3 vColor;
     varying vec3 vUVz;
 
     void main(void) {
         float r=min(1.0,dot(vUVz.xy,vUVz.xy));
         r=1.0-r*r;
-        gl_FragColor = vec4(vColor.xyz,vColor.w*r*vUVz.z);
+        gl_FragColor = vec4(vColor.xyz,r*vUVz.z);
     }
   </script>
   <script id="shader-vs" type="x-shader/x-vertex">
-    attribute vec4 vaPosition;
+    attribute vec4 vaPosition;//x,y,z,size
     attribute vec3 vaColor;
     attribute vec2 vaUV;
 
@@ -22,7 +31,7 @@
     uniform mat4 uPMatrix;
     uniform vec4 uScr;
 
-    varying vec4 vColor;
+    varying vec3 vColor;
     varying vec3 vUVz;
 
     void main(void) {
@@ -32,8 +41,8 @@
         position.x = position.x+vaUV.x*vaPosition.w*(1.0+boke*uScr.w)*uScr.x;
         position.y = position.y+vaUV.y*vaPosition.w*(1.0+boke*uScr.w);
         gl_Position=position;
-        vColor=vec4(vaColor,1.0-pow(boke,2.0));
-        vUVz=vec3(vaUV,max(0.2,1.0-boke));
+        vColor=vaColor;
+        vUVz=vec3(vaUV,max(0.3,1.0-boke));
     }
   </script>
   <script type="text/javascript">
@@ -49,6 +58,18 @@
     }
     function scale(v, s) {
       return [v[0] * s, v[1] * s, v[2] * s];
+    }
+    function dot(a, b) {
+      return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    }
+    function distance(v) {
+      return Math.sqrt(dot(v, v));
+    }
+    function multiply(a, b) {
+      return [a[0] * b, a[1] * b, a[2] * b];
+    }
+    function normalize(v) {
+      return multiply(v, distance(v));
     }
 
     var gl;
@@ -231,32 +252,121 @@
     function initBuffers() {
 
       var c1 = [
-        [0, 3, 10, 30, 42, 45, 40],
-        [0, 0, 5, 10, 15, 12, 10],
-        [0, 0, 12, 20, 15, 5, 0],
-        [-0.05, 0.05, 0.05, 0.0],
-        [0.6, 0.6, 0.5, 0.3],
-        [1.0, 1.0, 0.2],
+        [0, 3, 10, 30, 42, 45, 40], //x
+        [0, 0, 5, 10, 15, 12, 10], //y
+        [0, 0, 12, 20, 15, 5, 0], //z
+        [-0.05, 0.05, 0.05, 0.0], //h
+        [0.6, 0.6, 0.5, 0.3],  //s
+        [1.0, 1.0, 0.2], //v
+        [0.5, 0.5]//size
+      ];
+
+      var c2 = [
+        [0, 0, 8],
+        [0, 0,  15, 20],
+        [0, 0],
+        [0.2, 0.2],
+        [0.1, 0.1, 0.1, 0.1, 1.0, 1.0],
+        [1.0, 1.0],
+        [0.3, 0.3, 0.2, 0.2, 0.7]
+      ];
+
+      var pose = [
+        {
+          pos: [0, 0, -45],
+          color: [0.5, 0.1, 0],
+          scale: [0.5, 0.5, 0.5],
+          axis: [1, 1, 1, 0.0],
+        },{
+          pos: [35, 0, -30],
+          color: [0.25, 0.1, 0],
+          scale: [0.5, 0.5, 0.5],
+          axis: [1, 1, 1, 0.0],
+        }, {
+          pos: [30, 0, +25],
+          color: [+0.05, 0.1, 0],
+          scale: [0.5, 0.5, 0.5],
+          axis: [1, 1, 1, 0.0],
+        }, {
+          pos: [-30, 0, +35],
+          color: [-0.05, 0.1, 0],
+          scale: [0.5, 0.5, 0.5],
+          axis: [1, 1, 1, 0.0],
+        }, {
+          pos: [-36, 0, -30],
+          color: [+0.8, 0.1, 0],
+          scale: [0.5, 0.5, 0.5],
+          axis: [1, 1, 1, 0.0],
+        //}, {
+        //  pos: [0, 0, 20],
+        //  color: [+0.1, 0, 0],
+        //  scale: [0.5, 0.5, 0.5],
+        //  axis: [-1, 1, 1, 0.3],
+        //},{
+        //  pos: [-30, 0, 30],
+        //  color: [+0.3, 0, 0],
+        //  scale: [0.5, 0.7, 0.5],
+        //  axis: [1, 1, 1, 0.3],
+        //},{
+        //  pos: [-30, 0, -30],
+        //  color: [+0.6, 0, 0],
+        //  scale: [0.5, 0.7, 0.5],
+        //  axis: [1, 1, 1, 0.0],
+        //},{
+        //  pos: [30, 0, -30],
+        //  color: [+0.7, 0, 0],
+        //  scale: [0.3, 0.8, 0.3],
+        //  axis: [1, 1, 1, 0.6],
+        },
       ];
 
       var pcl = [];
-      var mat = mat4.create();
-      for (var r = 0; r < 100; r++) {
-        mat4.identity(mat);
-        var s = 0.3 + (r / 100);
-        mat4.scale(mat, [s, 1 / Math.pow(0.3 + r / 100, 1.1), s]);
-        mat4.rotateY(mat, Math.PI / 2.34 * r);
-        mat4.translate(mat, [r * 0.25, r * 0.1, 0]);
+      //guide
+      for (var p = 1; p < 10; p++) {
+        pcl.push({ pos: [p * 10, 0, 0], col: [1, 0, 0], size: 1 });
+        pcl.push({ pos: [0, 0,p * 10], col: [0, 1, 0], size: 1 });
+      }
 
-        var len = Math.floor(40 + r * 0.1);
-        for (var i = 5; i < len - 5; i++) {
-          var p = vectorBSpline(i / len, c1);
-          var q = [];
-          mat4.multiplyVec3(mat, [p[0], p[1], p[2] ], q);
-          var col = HSVtoRGB(p[3] + r / 200-0.1, p[4] + r / 600, p[5]);
-          pcl.push({ pos: [q[0], q[1], q[2] ], col: col });
-          mat4.multiplyVec3(mat, [p[0], p[1], -p[2]], q);
-          pcl.push({ pos: [q[0], q[1], q[2]], col: col });
+      var mat = mat4.create();
+      for (var j = 0; j < pose.length; j++) {
+        var ns = 10;
+        for (var s = 9; s < ns; s++) {
+          for (var r = 0; r < 5; r++) {
+            mat4.identity(mat);
+            mat4.translate(mat, pose[j].pos);
+            mat4.rotate(mat, pose[j].axis[3], pose[j].axis);
+            mat4.scale(mat, [pose[j].scale[0] * (s + 1) / ns, pose[j].scale[1], pose[j].scale[2] * (s + 1) / ns]);
+            mat4.rotateY(mat, Math.PI * 0.4 * r);
+            mat4.translate(mat, [0.25, 0.1, 0]);
+
+            var len = 20 + s * 3;
+            for (var i = 5; i < len - 5; i++) {
+              var p = vectorBSpline(i / len, c1);
+              var q = [];
+              mat4.multiplyVec3(mat, [p[0], p[1], p[2]], q);
+              var col = HSVtoRGB(p[3] + pose[j].color[0], p[4] + pose[j].color[1], p[5] + pose[j].color[2]);
+              pcl.push({ pos: [q[0], q[1], q[2]], col: col, size: p[6] });
+              mat4.multiplyVec3(mat, [p[0], p[1], -p[2]], q);
+              pcl.push({ pos: [q[0], q[1], q[2]], col: col, size: p[6] });
+            }
+          }
+        }
+        for (var r = 0; r < 10; r++) {
+          mat4.identity(mat);
+          mat4.translate(mat, pose[j].pos);
+          mat4.rotate(mat, pose[j].axis[3], pose[j].axis);
+          mat4.scale(mat, [pose[j].scale[0] + Math.cos(r / 6) * 0.4, pose[j].scale[1] + Math.random() * 0.3, pose[j].scale[2]]);
+          mat4.rotateY(mat, Math.PI * 0.234 * r);
+          mat4.translate(mat, [0.25, 0.1, 0]);
+
+          var len = 25;
+          for (var i = 2; i < len - 2; i++) {
+            var p = vectorBSpline(i / len, c2);
+            var q = [];
+            mat4.multiplyVec3(mat, [p[0], p[1], p[2]], q);
+            var col = HSVtoRGB(p[3] + pose[j].color[0], p[4] + pose[j].color[1], p[5] + pose[j].color[2]);
+            pcl.push({ pos: [q[0], q[1], q[2]], col: col, size: p[6] });
+          }
         }
       }
       document.getElementById('show_poly').innerHTML = pcl.length + ":particles " + pcl.length * 4 + ":vertices " + pcl.length * 4 * 9 * 4 + ":bytes";
@@ -266,13 +376,12 @@
       var vtx = Array(pcl.length * 4 * 9);
       var N = 0;
       for (var i = 0; i < pcl.length; i++) {
-        var size = 0.7;
         for (var j = 0; j < 4; j++) {
           var p = pcl[i].pos;
           vtx[N++]=p[0];
           vtx[N++]=p[1];
           vtx[N++]=p[2];
-          vtx[N++]=size;
+          vtx[N++]=pcl[i].size;
           vtx[N++]=pcl[i].col[0];
           vtx[N++]=pcl[i].col[1];
           vtx[N++]=pcl[i].col[2];
@@ -322,15 +431,16 @@
       ];
       var to = [
         [0, 0, 10, -10, 0],
-        [10, 10, 20, 20, 10],
+        [10, 0, 0, 0, 10],
         [0, 0, 0, 0, 0]
       ];
-      var focus =
-        [70, 70, 70, 20, 20, 70, 70];
-      var D =
-        [1.5, 1.5, 4.0, 1.5, 1.5];
+      var focus = // 焦点距離
+        [70, 70, 30, 30, 30, 70, 70];
+      var D = // 絞り (重い)
+        [1.2, 1.2, 3.0, 1.2, 1.2];
 
-      var f = (count % 600) / 600;
+      var length = 1000;
+      var f = (count % length) / length;
       mat4.lookAt(vectorBSpline(f, from), vectorBSpline(f, to), [0, 1, 0], view);
 
       gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
